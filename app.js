@@ -182,40 +182,138 @@ async function loadSheetData(manualRefresh = false) {
     try {
         console.log('Loading sheet data...', { spreadsheetId: SPREADSHEET_ID, sheetName: SHEET_NAME, range: DATA_RANGE });
         
-        // Get the full range with headers
-        // First, get headers (Row 2, Columns A-F)
-        const headerRange = `${SHEET_NAME}!A2:F2`;
-        console.log('Fetching headers from:', headerRange);
-        const headerResponse = await gapi.client.sheets.spreadsheets.values.get({
-            spreadsheetId: SPREADSHEET_ID,
-            range: headerRange,
-        });
-        console.log('Header response:', headerResponse);
+        // Try to get headers from row 1 first, then row 2
+        let headers = [];
+        
+        // Try row 1
+        try {
+            const headerRange1 = `${SHEET_NAME}!A1:F1`;
+            const headerResponse1 = await gapi.client.sheets.spreadsheets.values.get({
+                spreadsheetId: SPREADSHEET_ID,
+                range: headerRange1,
+            });
+            headers = headerResponse1.result.values?.[0] || [];
+            console.log('Tried row 1 for headers:', headers);
+        } catch (e) {
+            console.log('Row 1 not available or empty');
+        }
+        
+        // If row 1 is empty, try row 2
+        if (headers.length === 0) {
+            try {
+                const headerRange2 = `${SHEET_NAME}!A2:F2`;
+                const headerResponse2 = await gapi.client.sheets.spreadsheets.values.get({
+                    spreadsheetId: SPREADSHEET_ID,
+                    range: headerRange2,
+                });
+                headers = headerResponse2.result.values?.[0] || [];
+                console.log('Tried row 2 for headers:', headers);
+            } catch (e) {
+                console.log('Row 2 not available or empty');
+            }
+        }
         
         // Get data range (Rows 3-23, Columns A-F)
         const fullRange = `${SHEET_NAME}!${DATA_RANGE}`;
         console.log('Fetching data from:', fullRange);
-        const dataResponse = await gapi.client.sheets.spreadsheets.values.get({
-            spreadsheetId: SPREADSHEET_ID,
-            range: fullRange,
-        });
+        
+        // Get both values and formatting (for background colors)
+        const [dataResponse, formatResponse] = await Promise.all([
+            gapi.client.sheets.spreadsheets.values.get({
+                spreadsheetId: SPREADSHEET_ID,
+                range: fullRange,
+            }),
+            gapi.client.sheets.spreadsheets.get({
+                spreadsheetId: SPREADSHEET_ID,
+                ranges: [fullRange],
+                fields: 'sheets(data(rowData(values(userEnteredFormat.backgroundColor))))',
+            }).catch(err => {
+                console.log('Could not fetch formatting (non-critical):', err);
+                return null; // Continue without colors if formatting fails
+            })
+        ]);
+        
         console.log('Data response:', dataResponse);
         
-        const headers = headerResponse.result.values?.[0] || [];
-        const values = dataResponse.result.values || [];
+        let values = dataResponse.result.values || [];
+        
+        // Normalize values array - ensure all rows have 6 columns (A-F), fill with empty strings
+        values = values.map(row => {
+            const normalizedRow = Array(6).fill('');
+            if (row && Array.isArray(row)) {
+                row.forEach((cell, index) => {
+                    if (index < 6) {
+                        normalizedRow[index] = cell !== undefined && cell !== null ? cell : '';
+                    }
+                });
+            }
+            return normalizedRow;
+        });
+        
+        // Extract background colors from format response
+        let cellColors = {};
+        if (formatResponse && formatResponse.result && formatResponse.result.sheets && formatResponse.result.sheets[0]) {
+            const sheetData = formatResponse.result.sheets[0].data;
+            if (sheetData && sheetData[0] && sheetData[0].rowData) {
+                sheetData[0].rowData.forEach((row, rowIndex) => {
+                    if (row && row.values) {
+                        row.values.forEach((cell, colIndex) => {
+                            if (cell && cell.userEnteredFormat && cell.userEnteredFormat.backgroundColor) {
+                                const bg = cell.userEnteredFormat.backgroundColor;
+                                // Convert Google Sheets color format (0-1 RGB) to CSS rgb
+                                // Handle both object format {red, green, blue} and number format
+                                let r = 255, g = 255, b = 255;
+                                
+                                if (typeof bg.red === 'number') {
+                                    r = Math.round(bg.red * 255);
+                                }
+                                if (typeof bg.green === 'number') {
+                                    g = Math.round(bg.green * 255);
+                                }
+                                if (typeof bg.blue === 'number') {
+                                    b = Math.round(bg.blue * 255);
+                                }
+                                
+                                // Only apply color if it's not white (default)
+                                if (r !== 255 || g !== 255 || b !== 255) {
+                                    const colorKey = `${rowIndex}_${colIndex}`;
+                                    cellColors[colorKey] = `rgb(${r}, ${g}, ${b})`;
+                                }
+                            }
+                        });
+                    }
+                });
+            }
+        }
+        
+        // If headers are still empty and we have data, use first non-empty row as headers
+        if (headers.length === 0 && values.length > 0) {
+            // Find first non-empty row
+            const firstRowWithData = values.find(row => row && row.some(cell => cell !== undefined && cell !== null && cell !== ''));
+            if (firstRowWithData && firstRowWithData.length > 0) {
+                headers = firstRowWithData;
+                // Remove that row from data (it's now used as header)
+                values = values.filter(row => row !== firstRowWithData);
+                console.log('Using first data row as headers:', headers);
+            }
+        }
+        
+        // Filter out completely empty rows from values (rows where all cells are empty)
+        values = values.filter(row => row && row.some(cell => cell !== undefined && cell !== null && cell !== ''));
         
         console.log('Headers loaded:', headers);
-        console.log('Data loaded:', values);
+        console.log('Data loaded (filtered):', values);
+        console.log('Cell colors loaded:', Object.keys(cellColors).length, 'colored cells');
         console.log('Number of rows:', values.length);
         
         if (headers.length === 0) {
-            console.warn('No headers found in row 2');
+            console.warn('No headers found, will use default column names');
         }
         if (values.length === 0) {
             console.warn('No data rows found in range A3:F23');
         }
         
-        displayData(headers, values);
+        displayData(headers, values, cellColors);
         updateLastUpdateTime();
         
         if (manualRefresh) {
@@ -241,8 +339,8 @@ async function loadSheetData(manualRefresh = false) {
 }
 
 // Display data in table
-function displayData(headers, values) {
-    console.log('displayData called with:', { headers, values, headerCount: headers.length, valueCount: values.length });
+function displayData(headers, values, cellColors = {}) {
+    console.log('displayData called with:', { headers, values, headerCount: headers.length, valueCount: values.length, colorsCount: Object.keys(cellColors).length });
     
     // Clear existing content
     headerRow.innerHTML = '';
@@ -287,9 +385,28 @@ function displayData(headers, values) {
     values.forEach((row, rowIndex) => {
         const tr = document.createElement('tr');
         
+        // Ensure row has enough columns (pad with empty strings if needed)
+        const normalizedRow = Array(6).fill('');
+        if (row && Array.isArray(row)) {
+            row.forEach((cell, index) => {
+                if (index < 6) {
+                    normalizedRow[index] = cell !== undefined && cell !== null ? cell : '';
+                }
+            });
+        }
+        
         headers.forEach((_, colIndex) => {
             const td = document.createElement('td');
-            const cellValue = row[colIndex] || '';
+            // Get cell value - use empty string if undefined/null/empty
+            const cellValue = normalizedRow[colIndex] !== undefined && normalizedRow[colIndex] !== null 
+                ? normalizedRow[colIndex] 
+                : '';
+            
+            // Apply background color if available (rowIndex in data array, colIndex)
+            const colorKey = `${rowIndex}_${colIndex}`;
+            if (cellColors[colorKey]) {
+                td.style.backgroundColor = cellColors[colorKey];
+            }
             
             if (colIndex === CHECKBOX_COLUMN_INDEX) {
                 // Checkbox column (Column B)
@@ -297,7 +414,7 @@ function displayData(headers, values) {
                 const checkbox = document.createElement('input');
                 checkbox.type = 'checkbox';
                 checkbox.className = 'checkbox-input';
-                checkbox.checked = cellValue === 'TRUE' || cellValue === 'true' || cellValue === true || cellValue === '1';
+                checkbox.checked = cellValue === 'TRUE' || cellValue === 'true' || cellValue === true || cellValue === '1' || cellValue === 1;
                 
                 // Store row number (actual row in sheet = rowIndex + 3, since we start at row 3)
                 const sheetRow = rowIndex + 3;
@@ -311,7 +428,7 @@ function displayData(headers, values) {
             } else {
                 // Read-only columns
                 td.className = 'read-only-cell';
-                td.textContent = cellValue;
+                td.textContent = cellValue; // Empty string will display as empty (no content)
             }
             
             tr.appendChild(td);
