@@ -132,21 +132,27 @@ function initializeOAuth() {
 // Initialize Google Sheets API client
 async function initializeSheetsAPI() {
     try {
+        // Initialize the client first
         await gapi.client.init({
-            apiKey: '', // Not needed for OAuth
+            // No API key needed for OAuth, but init is required
         });
         
+        // Load the Google Sheets API v4
+        await gapi.client.load('https://sheets.googleapis.com/$discovery/rest?version=v4');
+        
+        // Set the access token
         gapi.client.setToken({ access_token: accessToken });
         localStorage.setItem('google_access_token', accessToken);
         // Store expiry (tokens typically last 1 hour)
         localStorage.setItem('google_token_expiry', (Date.now() + 3600000).toString());
         
+        console.log('Google Sheets API loaded successfully');
         hideAuthSection();
         loadSheetData();
         startAutoRefresh();
     } catch (error) {
         console.error('Error initializing Sheets API:', error);
-        showError('Failed to initialize Google Sheets API');
+        showError('Failed to initialize Google Sheets API. Please refresh the page.');
     }
 }
 
