@@ -217,21 +217,24 @@ async function loadSheetData(manualRefresh = false) {
         const fullRange = `${SHEET_NAME}!${DATA_RANGE}`;
         console.log('Fetching data from:', fullRange);
         
-        // Get both values and formatting (for background colors)
-        const [dataResponse, formatResponse] = await Promise.all([
-            gapi.client.sheets.spreadsheets.values.get({
-                spreadsheetId: SPREADSHEET_ID,
-                range: fullRange,
-            }),
-            gapi.client.sheets.spreadsheets.get({
+        // Get values (required)
+        const dataResponse = await gapi.client.sheets.spreadsheets.values.get({
+            spreadsheetId: SPREADSHEET_ID,
+            range: fullRange,
+        });
+        
+        // Get formatting (optional - for background colors)
+        let formatResponse = null;
+        try {
+            formatResponse = await gapi.client.sheets.spreadsheets.get({
                 spreadsheetId: SPREADSHEET_ID,
                 ranges: [fullRange],
                 fields: 'sheets(data(rowData(values(userEnteredFormat.backgroundColor))))',
-            }).catch(err => {
-                console.log('Could not fetch formatting (non-critical):', err);
-                return null; // Continue without colors if formatting fails
-            })
-        ]);
+            });
+        } catch (err) {
+            console.log('Could not fetch formatting (non-critical, continuing without colors):', err);
+            formatResponse = null; // Continue without colors if formatting fails
+        }
         
         console.log('Data response:', dataResponse);
         
