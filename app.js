@@ -2,8 +2,8 @@
 const GOOGLE_CLIENT_ID = '391147268144-8uge039vpbg229bhbqf3fvvb1n00iiub.apps.googleusercontent.com';
 const SPREADSHEET_ID = '1d1FG7kFCWMD0eSn2v3e7dO-o7IlbdhopYFBy8D6sVF4';
 const SHEET_NAME = 'Overview';
-const DATA_RANGE = 'A3:F23'; // Columns A-F, Rows 3-23
-const CHECKBOX_COLUMN_INDEX = 1; // Column B (0-indexed)
+const DATA_RANGE = 'A3:G23'; // Columns A-G, Rows 3-23
+const CHECKBOX_COLUMN_INDICES = [1, 2]; // Column B and C are checkboxes (0-indexed: B=1, C=2)
 
 // API Scopes
 const SCOPES = 'https://www.googleapis.com/auth/spreadsheets';
@@ -214,7 +214,7 @@ async function loadSheetData(manualRefresh = false) {
         
         // Try row 1
         try {
-            const headerRange1 = `${SHEET_NAME}!A1:F1`;
+            const headerRange1 = `${SHEET_NAME}!A1:G1`;
             const headerResponse1 = await gapi.client.sheets.spreadsheets.values.get({
                 spreadsheetId: SPREADSHEET_ID,
                 range: headerRange1,
@@ -228,7 +228,7 @@ async function loadSheetData(manualRefresh = false) {
         // If row 1 is empty, try row 2
         if (headers.length === 0) {
             try {
-                const headerRange2 = `${SHEET_NAME}!A2:F2`;
+                const headerRange2 = `${SHEET_NAME}!A2:G2`;
                 const headerResponse2 = await gapi.client.sheets.spreadsheets.values.get({
                     spreadsheetId: SPREADSHEET_ID,
                     range: headerRange2,
@@ -267,12 +267,12 @@ async function loadSheetData(manualRefresh = false) {
         
         let values = dataResponse.result.values || [];
         
-        // Normalize values array - ensure all rows have 6 columns (A-F), fill with empty strings
+        // Normalize values array - ensure all rows have 7 columns (A-G), fill with empty strings
         values = values.map(row => {
-            const normalizedRow = Array(6).fill('');
+            const normalizedRow = Array(7).fill('');
             if (row && Array.isArray(row)) {
                 row.forEach((cell, index) => {
-                    if (index < 6) {
+                    if (index < 7) {
                         normalizedRow[index] = cell !== undefined && cell !== null ? cell : '';
                     }
                 });
@@ -340,7 +340,7 @@ async function loadSheetData(manualRefresh = false) {
             console.warn('No headers found, will use default column names');
         }
         if (values.length === 0) {
-            console.warn('No data rows found in range A3:F23');
+            console.warn('No data rows found in range A3:G23');
         }
         
         displayData(headers, values, cellColors);
@@ -393,8 +393,8 @@ function displayData(headers, values, cellColors = {}) {
     // Handle empty data case
     if (!headers || headers.length === 0) {
         console.warn('No headers to display');
-        // Create default headers if none exist
-        for (let i = 0; i < 6; i++) {
+        // Create default headers if none exist (A-G = 7 columns)
+        for (let i = 0; i < 7; i++) {
             const th = document.createElement('th');
             th.textContent = `Column ${String.fromCharCode(65 + i)}`;
             headerRow.appendChild(th);
@@ -414,8 +414,8 @@ function displayData(headers, values, cellColors = {}) {
         // Show a message row
         const tr = document.createElement('tr');
         const td = document.createElement('td');
-        td.colSpan = headers.length || 6;
-        td.textContent = 'No data found in the specified range (A3:F23)';
+        td.colSpan = headers.length || 7;
+        td.textContent = 'No data found in the specified range (A3:G23)';
         td.style.textAlign = 'center';
         td.style.padding = '20px';
         td.style.color = 'var(--text-secondary)';
@@ -429,11 +429,11 @@ function displayData(headers, values, cellColors = {}) {
     values.forEach((row, rowIndex) => {
         const tr = document.createElement('tr');
         
-        // Ensure row has enough columns (pad with empty strings if needed)
-        const normalizedRow = Array(6).fill('');
+        // Ensure row has enough columns (pad with empty strings if needed) - now 7 columns (A-G)
+        const normalizedRow = Array(7).fill('');
         if (row && Array.isArray(row)) {
             row.forEach((cell, index) => {
-                if (index < 6) {
+                if (index < 7) {
                     normalizedRow[index] = cell !== undefined && cell !== null ? cell : '';
                 }
             });
@@ -447,13 +447,15 @@ function displayData(headers, values, cellColors = {}) {
                 : '';
             
             // Apply background color if available (rowIndex in data array, colIndex)
+            // This will work for columns F (index 5) and G (index 6) as well as any other colored cells
             const colorKey = `${rowIndex}_${colIndex}`;
             if (cellColors[colorKey]) {
                 td.style.backgroundColor = cellColors[colorKey];
             }
             
-            if (colIndex === CHECKBOX_COLUMN_INDEX) {
-                // Checkbox column (Column B)
+            // Check if this column is a checkbox column (B or C)
+            if (CHECKBOX_COLUMN_INDICES.includes(colIndex)) {
+                // Checkbox column (Column B or C)
                 td.className = 'checkbox-cell';
                 const checkbox = document.createElement('input');
                 checkbox.type = 'checkbox';
@@ -461,16 +463,20 @@ function displayData(headers, values, cellColors = {}) {
                 checkbox.checked = cellValue === 'TRUE' || cellValue === 'true' || cellValue === true || cellValue === '1' || cellValue === 1;
                 
                 // Store row number (actual row in sheet = rowIndex + 3, since we start at row 3)
+                // Store column letter (B=1, C=2)
                 const sheetRow = rowIndex + 3;
+                const columnLetter = String.fromCharCode(65 + colIndex); // A=65, B=66, C=67, etc.
                 checkbox.dataset.row = sheetRow;
+                checkbox.dataset.column = colIndex;
+                checkbox.dataset.columnLetter = columnLetter;
                 
                 checkbox.addEventListener('change', (e) => {
-                    updateCheckbox(sheetRow, e.target.checked);
+                    updateCheckbox(sheetRow, e.target.checked, colIndex, columnLetter);
                 });
                 
                 td.appendChild(checkbox);
             } else {
-                // Read-only columns
+                // Read-only columns (A, D, E, F, G)
                 td.className = 'read-only-cell';
                 td.textContent = cellValue; // Empty string will display as empty (no content)
             }
@@ -485,17 +491,18 @@ function displayData(headers, values, cellColors = {}) {
 }
 
 // Update checkbox value in Google Sheet
-async function updateCheckbox(row, checked) {
+async function updateCheckbox(row, checked, columnIndex, columnLetter) {
     if (isUpdatingCheckbox) return;
     
     isUpdatingCheckbox = true;
-    const checkbox = document.querySelector(`input[data-row="${row}"]`);
+    // Find the specific checkbox by row and column
+    const checkbox = document.querySelector(`input[data-row="${row}"][data-column="${columnIndex}"]`);
     if (checkbox) checkbox.disabled = true;
     
     try {
-        // Column B is column index 1 (0-indexed)
-        // We need to update cell B{row}
-        const cellRange = `${SHEET_NAME}!B${row}`;
+        // columnLetter should be 'B' or 'C' (or any checkbox column)
+        // We need to update cell {columnLetter}{row}
+        const cellRange = `${SHEET_NAME}!${columnLetter}${row}`;
         const value = checked ? 'TRUE' : 'FALSE';
         
         await gapi.client.sheets.spreadsheets.values.update({
@@ -504,6 +511,8 @@ async function updateCheckbox(row, checked) {
             valueInputOption: 'USER_ENTERED',
             values: [[value]],
         });
+        
+        console.log(`Updated checkbox at ${columnLetter}${row} to ${value}`);
         
         // Reload data after a short delay to reflect changes
         setTimeout(() => {
@@ -521,7 +530,7 @@ async function updateCheckbox(row, checked) {
             showAuthSection();
             showError('Session expired. Please sign in again.');
         } else {
-            showError('Failed to update checkbox. Please try again.');
+            showError(`Failed to update checkbox in column ${columnLetter}. Please try again.`);
             // Revert checkbox state
             if (checkbox) checkbox.checked = !checked;
         }
