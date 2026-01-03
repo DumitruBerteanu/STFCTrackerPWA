@@ -132,6 +132,13 @@ function initializeOAuth() {
 // Initialize Google Sheets API client
 async function initializeSheetsAPI() {
     try {
+        // Check if accessToken is set
+        if (!accessToken) {
+            console.error('No access token available');
+            showAuthSection();
+            return;
+        }
+        
         // Initialize the client first
         await gapi.client.init({
             // No API key needed for OAuth, but init is required
@@ -142,9 +149,16 @@ async function initializeSheetsAPI() {
         
         // Set the access token
         gapi.client.setToken({ access_token: accessToken });
-        localStorage.setItem('google_access_token', accessToken);
-        // Store expiry (tokens typically last 1 hour)
-        localStorage.setItem('google_token_expiry', (Date.now() + 3600000).toString());
+        
+        // Try to save to localStorage (may fail in some PWA contexts)
+        try {
+            localStorage.setItem('google_access_token', accessToken);
+            // Store expiry (tokens typically last 1 hour)
+            localStorage.setItem('google_token_expiry', (Date.now() + 3600000).toString());
+        } catch (e) {
+            console.warn('Could not save token to localStorage:', e);
+            // Continue anyway - token is in memory
+        }
         
         console.log('Google Sheets API loaded successfully');
         hideAuthSection();
@@ -152,7 +166,8 @@ async function initializeSheetsAPI() {
         startAutoRefresh();
     } catch (error) {
         console.error('Error initializing Sheets API:', error);
-        showError('Failed to initialize Google Sheets API. Please refresh the page.');
+        console.error('Error details:', error.message, error.stack);
+        showError('Failed to initialize Google Sheets API: ' + (error.message || 'Please refresh the page.'));
     }
 }
 
@@ -165,10 +180,22 @@ function handleSignIn() {
     }
     
     try {
+        // For iOS/mobile, we might need to use a different approach
+        // Try to request access token with explicit prompt
         tokenClient.requestAccessToken({ prompt: 'consent' });
+        
+        // Add a timeout to detect if popup was blocked
+        setTimeout(() => {
+            // Check if we got a token (this is a fallback check)
+            const storedToken = localStorage.getItem('google_access_token');
+            if (!storedToken && document.hidden === false) {
+                // If no token after 2 seconds and page is visible, might be popup blocked
+                console.warn('Sign-in might have been blocked. Try using Safari or ensure popups are allowed.');
+            }
+        }, 2000);
     } catch (error) {
         console.error('Error requesting access token:', error);
-        showError('Failed to sign in. Please try again.');
+        showError('Failed to sign in: ' + (error.message || 'Please try again. On iOS, try using Safari instead of Chrome.'));
     }
 }
 
@@ -327,14 +354,28 @@ async function loadSheetData(manualRefresh = false) {
         }
     } catch (error) {
         console.error('Error loading sheet data:', error);
+        console.error('Error details:', {
+            message: error.message,
+            status: error.status,
+            code: error.code,
+            result: error.result
+        });
+        
         if (error.status === 401) {
             // Token expired, re-authenticate
             localStorage.removeItem('google_access_token');
             localStorage.removeItem('google_token_expiry');
             showAuthSection();
             showError('Session expired. Please sign in again.');
+        } else if (error.status === 403) {
+            // Permission denied
+            showError('Permission denied. Please make sure you have access to the Google Sheet.');
+        } else if (error.code === 404 || error.status === 404) {
+            // Sheet not found
+            showError('Sheet not found. Please check the Sheet ID in settings.');
         } else {
-            showError('Failed to load data. Please check your connection and try again.');
+            const errorMsg = error.message || error.result?.error?.message || 'Unknown error';
+            showError(`Failed to load data: ${errorMsg}. Please check your connection and try again.`);
         }
     } finally {
         hideLoading();
@@ -542,6 +583,21 @@ function showError(message) {
     errorSection.classList.remove('hidden');
     hideLoading();
     hideContent();
+    
+    // Also log to console for debugging
+    console.error('Error displayed to user:', message);
+    
+    // On mobile, also try to show in alert for visibility (can be removed later)
+    if (window.innerWidth <= 768) {
+        // Mobile device - errors might not be visible in console
+        // Alert is temporary for debugging
+        setTimeout(() => {
+            if (errorSection && !errorSection.classList.contains('hidden')) {
+                // Error still visible after 1 second, might help with debugging
+                console.log('Error is visible to user');
+            }
+        }, 1000);
+    }
 }
 
 function hideError() {
