@@ -1,0 +1,66 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="default">
+    <meta name="apple-mobile-web-app-title" content="STFC Tracker">
+    <meta name="theme-color" content="#4285f4">
+    <title>STFC Tracker</title>
+    <link rel="manifest" href="manifest.json">
+    <link rel="stylesheet" href="styles.css">
+    <link rel="apple-touch-icon" href="icon-192.png">
+</head>
+<body>
+    <div class="container">
+        <header class="header">
+            <h1>STFC Progress Tracker</h1>
+            <button id="refreshBtn" class="refresh-btn" aria-label="Refresh data">
+                <span class="refresh-icon">↻</span>
+            </button>
+        </header>
+
+        <div id="authSection" class="auth-section">
+            <div class="auth-card">
+                <h2>Sign in to Google</h2>
+                <p>Connect your Google account to access your progress sheet.</p>
+                <button id="signInBtn" class="btn btn-primary">Sign in with Google</button>
+            </div>
+        </div>
+
+        <div id="loadingSection" class="loading-section hidden">
+            <div class="spinner"></div>
+            <p>Loading data...</p>
+        </div>
+
+        <div id="errorSection" class="error-section hidden">
+            <div class="error-card">
+                <h3>⚠️ Error</h3>
+                <p id="errorMessage"></p>
+                <button id="retryBtn" class="btn btn-secondary">Try Again</button>
+            </div>
+        </div>
+
+        <div id="contentSection" class="content-section hidden">
+            <div class="table-container">
+                <table id="dataTable" class="data-table">
+                    <thead>
+                        <tr id="headerRow"></tr>
+                    </thead>
+                    <tbody id="dataBody"></tbody>
+                </table>
+            </div>
+            <div class="last-updated">
+                <span id="lastUpdateTime"></span>
+            </div>
+        </div>
+    </div>
+
+    <!-- Google API Script -->
+    <script src="https://apis.google.com/js/api.js"></script>
+    <script src="https://accounts.google.com/gsi/client" async defer></script>
+    <script src="app.js"></script>
+</body>
+</html>
+
