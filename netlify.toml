@@ -3,6 +3,12 @@
   publish = "."
   command = "echo 'No build step required'"
 
+# Redirects for SPA routing (ensure index.html is served for all routes)
+[[redirects]]
+  from = "/*"
+  to = "/index.html"
+  status = 200
+
 # Headers for PWA support
 [[headers]]
   for = "/*"

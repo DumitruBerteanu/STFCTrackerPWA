@@ -32,8 +32,8 @@ const lastUpdateTime = document.getElementById('lastUpdateTime');
 
 // Initialize on page load
 document.addEventListener('DOMContentLoaded', () => {
-    initializeGoogleAPI();
     setupEventListeners();
+    waitForGoogleAPIs();
 });
 
 // Setup event listeners
@@ -46,29 +46,68 @@ function setupEventListeners() {
     });
 }
 
+// Wait for Google APIs to load
+function waitForGoogleAPIs() {
+    // Check if both Google APIs are loaded
+    if (typeof google !== 'undefined' && google.accounts && google.accounts.oauth2 && typeof gapi !== 'undefined') {
+        initializeGoogleAPI();
+    } else {
+        // Wait a bit and try again (max 10 seconds)
+        if (typeof waitForGoogleAPIs.attempts === 'undefined') {
+            waitForGoogleAPIs.attempts = 0;
+        }
+        waitForGoogleAPIs.attempts++;
+        if (waitForGoogleAPIs.attempts < 100) {
+            setTimeout(waitForGoogleAPIs, 100);
+        } else {
+            console.error('Google APIs failed to load');
+            showError('Failed to load Google Sign-In. Please refresh the page.');
+        }
+    }
+}
+
 // Initialize Google API
 function initializeGoogleAPI() {
+    // Initialize Google Identity Services first
+    if (typeof google === 'undefined' || !google.accounts || !google.accounts.oauth2) {
+        console.error('Google Identity Services not loaded');
+        showError('Failed to load Google Sign-In. Please refresh the page.');
+        return;
+    }
+
+    try {
+        tokenClient = google.accounts.oauth2.initTokenClient({
+            client_id: GOOGLE_CLIENT_ID,
+            scope: SCOPES,
+            callback: (response) => {
+                if (response.error) {
+                    showError('Authentication failed: ' + response.error);
+                    return;
+                }
+                accessToken = response.access_token;
+                initializeSheetsAPI();
+            },
+        });
+        gisLoaded = true;
+        console.log('Google Identity Services initialized');
+    } catch (error) {
+        console.error('Error initializing Google Identity Services:', error);
+        showError('Failed to initialize Google Sign-In. Please refresh the page.');
+        return;
+    }
+
     // Load Google API client library
+    if (typeof gapi === 'undefined') {
+        console.error('Google API not loaded');
+        showError('Failed to load Google API. Please refresh the page.');
+        return;
+    }
+
     gapi.load('client', () => {
         gapiLoaded = true;
-        if (gisLoaded) initializeOAuth();
+        console.log('Google API client loaded');
+        initializeOAuth();
     });
-
-    // Initialize Google Identity Services
-    tokenClient = google.accounts.oauth2.initTokenClient({
-        client_id: GOOGLE_CLIENT_ID,
-        scope: SCOPES,
-        callback: (response) => {
-            if (response.error) {
-                showError('Authentication failed: ' + response.error);
-                return;
-            }
-            accessToken = response.access_token;
-            initializeSheetsAPI();
-        },
-    });
-    gisLoaded = true;
-    if (gapiLoaded) initializeOAuth();
 }
 
 function initializeOAuth() {
@@ -107,7 +146,18 @@ async function initializeSheetsAPI() {
 
 // Handle sign in
 function handleSignIn() {
-    tokenClient.requestAccessToken({ prompt: 'consent' });
+    if (!tokenClient) {
+        console.error('Token client not initialized');
+        showError('Sign-in not ready. Please refresh the page.');
+        return;
+    }
+    
+    try {
+        tokenClient.requestAccessToken({ prompt: 'consent' });
+    } catch (error) {
+        console.error('Error requesting access token:', error);
+        showError('Failed to sign in. Please try again.');
+    }
 }
 
 // Load data from Google Sheet
