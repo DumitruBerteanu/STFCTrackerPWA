@@ -33,6 +33,7 @@ const lastUpdateTime = document.getElementById('lastUpdateTime');
 // Initialize on page load
 document.addEventListener('DOMContentLoaded', () => {
     setupEventListeners();
+    // Start waiting for Google APIs to load
     waitForGoogleAPIs();
 });
 
@@ -46,10 +47,11 @@ function setupEventListeners() {
     });
 }
 
-// Wait for Google APIs to load
+// Wait for Google APIs to load (backup check)
 function waitForGoogleAPIs() {
     // Check if both Google APIs are loaded
-    if (typeof google !== 'undefined' && google.accounts && google.accounts.oauth2 && typeof gapi !== 'undefined') {
+    if (typeof gapi !== 'undefined' && typeof google !== 'undefined' && google.accounts && google.accounts.oauth2) {
+        console.log('All APIs ready, initializing...');
         initializeGoogleAPI();
     } else {
         // Wait a bit and try again (max 10 seconds)
@@ -60,7 +62,11 @@ function waitForGoogleAPIs() {
         if (waitForGoogleAPIs.attempts < 100) {
             setTimeout(waitForGoogleAPIs, 100);
         } else {
-            console.error('Google APIs failed to load');
+            console.error('Google APIs failed to load', {
+                gapi: typeof gapi,
+                google: typeof google,
+                googleAccounts: typeof google !== 'undefined' ? typeof google.accounts : 'undefined'
+            });
             showError('Failed to load Google Sign-In. Please refresh the page.');
         }
     }

@@ -3,6 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+    <meta name="mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-status-bar-style" content="default">
     <meta name="apple-mobile-web-app-title" content="STFC Tracker">
@@ -57,9 +58,9 @@
         </div>
     </div>
 
-    <!-- Google API Script -->
-    <script src="https://apis.google.com/js/api.js" onload="window.gapiReady = true"></script>
-    <script src="https://accounts.google.com/gsi/client" onload="window.gsiReady = true"></script>
+    <!-- Google API Scripts -->
+    <script src="https://apis.google.com/js/api.js"></script>
+    <script src="https://accounts.google.com/gsi/client" async defer></script>
     <script src="app.js"></script>
 </body>
 </html>
