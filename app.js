@@ -180,23 +180,40 @@ async function loadSheetData(manualRefresh = false) {
     showLoading();
     
     try {
+        console.log('Loading sheet data...', { spreadsheetId: SPREADSHEET_ID, sheetName: SHEET_NAME, range: DATA_RANGE });
+        
         // Get the full range with headers
         // First, get headers (Row 2, Columns A-F)
         const headerRange = `${SHEET_NAME}!A2:F2`;
+        console.log('Fetching headers from:', headerRange);
         const headerResponse = await gapi.client.sheets.spreadsheets.values.get({
             spreadsheetId: SPREADSHEET_ID,
             range: headerRange,
         });
+        console.log('Header response:', headerResponse);
         
         // Get data range (Rows 3-23, Columns A-F)
         const fullRange = `${SHEET_NAME}!${DATA_RANGE}`;
+        console.log('Fetching data from:', fullRange);
         const dataResponse = await gapi.client.sheets.spreadsheets.values.get({
             spreadsheetId: SPREADSHEET_ID,
             range: fullRange,
         });
+        console.log('Data response:', dataResponse);
         
         const headers = headerResponse.result.values?.[0] || [];
         const values = dataResponse.result.values || [];
+        
+        console.log('Headers loaded:', headers);
+        console.log('Data loaded:', values);
+        console.log('Number of rows:', values.length);
+        
+        if (headers.length === 0) {
+            console.warn('No headers found in row 2');
+        }
+        if (values.length === 0) {
+            console.warn('No data rows found in range A3:F23');
+        }
         
         displayData(headers, values);
         updateLastUpdateTime();
@@ -225,16 +242,46 @@ async function loadSheetData(manualRefresh = false) {
 
 // Display data in table
 function displayData(headers, values) {
+    console.log('displayData called with:', { headers, values, headerCount: headers.length, valueCount: values.length });
+    
     // Clear existing content
     headerRow.innerHTML = '';
     dataBody.innerHTML = '';
     
-    // Create header row
-    headers.forEach((header, index) => {
-        const th = document.createElement('th');
-        th.textContent = header || `Column ${String.fromCharCode(65 + index)}`; // A, B, C, etc.
-        headerRow.appendChild(th);
-    });
+    // Handle empty data case
+    if (!headers || headers.length === 0) {
+        console.warn('No headers to display');
+        // Create default headers if none exist
+        for (let i = 0; i < 6; i++) {
+            const th = document.createElement('th');
+            th.textContent = `Column ${String.fromCharCode(65 + i)}`;
+            headerRow.appendChild(th);
+        }
+    } else {
+        // Create header row
+        headers.forEach((header, index) => {
+            const th = document.createElement('th');
+            th.textContent = header || `Column ${String.fromCharCode(65 + index)}`; // A, B, C, etc.
+            headerRow.appendChild(th);
+        });
+    }
+    
+    // Handle empty values
+    if (!values || values.length === 0) {
+        console.warn('No data rows to display');
+        // Show a message row
+        const tr = document.createElement('tr');
+        const td = document.createElement('td');
+        td.colSpan = headers.length || 6;
+        td.textContent = 'No data found in the specified range (A3:F23)';
+        td.style.textAlign = 'center';
+        td.style.padding = '20px';
+        td.style.color = 'var(--text-secondary)';
+        tr.appendChild(td);
+        dataBody.appendChild(tr);
+        showContent();
+        return;
+    }
     
     // Create data rows
     values.forEach((row, rowIndex) => {
